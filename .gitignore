@@ -1,0 +1,26 @@
+# Local recordings and generated files
+recordings/
+transcripts/
+temp/
+
+# Native build artifacts
+native/macos/capture
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment variables
+.env
+
+# macOS
+.DS_Store
+
+# Development prototypes
+test_capture
+test_capture.swift
+test_*.mov
+test_*.mp4
+test_*.wav
