@@ -31,6 +31,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def transcribe_and_cleanup(
+    audio_path: Path,
+    transcript_path: Path,
+    language: str,
+) -> None:
+    transcribe_audio(
+        audio_path,
+        transcript_path,
+        language=language,
+    )
+
+    audio_path.unlink()
+
+
 def main() -> None:
     args = parse_args()
 
@@ -53,10 +67,10 @@ def main() -> None:
 
     print("\nTranscribing audio...")
 
-    transcribe_audio(
+    transcribe_and_cleanup(
         audio_path,
         transcript_path,
-        language=args.language,
+        args.language,
     )
 
     print("\nDone.")
