@@ -3,7 +3,7 @@ from typing import Callable
 from pathlib import Path
 
 
-def get_capture_backend() -> Callable[[Path], None]:
+def get_capture_backend() -> Callable[[Path, int], None]:
     system = platform.system()
 
     if system == "Darwin":

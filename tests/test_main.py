@@ -46,8 +46,8 @@ def test_transcribe_and_cleanup_preserves_wav_on_failure(
     assert audio_path.exists()
 
 
-def _fake_args(tmp_path: Path) -> argparse.Namespace:
-    return argparse.Namespace(name="lecture", language="es")
+def _fake_args(tmp_path: Path, display: int = 0) -> argparse.Namespace:
+    return argparse.Namespace(name="lecture", language="es", display=display)
 
 
 def test_main_reports_error_and_exits_nonzero_when_capture_binary_missing(
@@ -108,7 +108,7 @@ def test_main_reports_error_and_exits_nonzero_when_ffmpeg_missing(
         return_value=(recording_path, transcript_path),
     ), patch(
         "src.main.get_capture_backend",
-        return_value=lambda path: None,
+        return_value=lambda path, display: None,
     ), patch(
         "src.main.extract_audio",
         side_effect=FileNotFoundError(
@@ -139,7 +139,7 @@ def test_main_preserves_wav_and_exits_nonzero_when_transcription_fails(
             return_value=(recording_path, transcript_path),
         ), patch(
             "src.main.get_capture_backend",
-            return_value=lambda path: None,
+            return_value=lambda path, display: None,
         ), patch(
             "src.main.extract_audio",
             return_value=None,
@@ -166,6 +166,8 @@ def test_main_returns_zero_on_success(
         audio_path = tmp_path / "lecture.wav"
         audio_path.touch()
 
+        run_capture = Mock()
+
         with patch(
             "src.main.parse_args", return_value=_fake_args(tmp_path)
         ), patch(
@@ -173,7 +175,7 @@ def test_main_returns_zero_on_success(
             return_value=(recording_path, transcript_path),
         ), patch(
             "src.main.get_capture_backend",
-            return_value=lambda path: None,
+            return_value=run_capture,
         ), patch(
             "src.main.extract_audio",
             return_value=None,
@@ -185,3 +187,66 @@ def test_main_returns_zero_on_success(
 
         assert exit_code == 0
         assert not audio_path.exists()
+        run_capture.assert_called_once_with(recording_path, 0)
+
+
+def test_main_passes_explicit_display_to_capture_backend(
+    tmp_path: Path,
+) -> None:
+    recording_path = tmp_path / "lecture.mov"
+    transcript_path = tmp_path / "lecture.txt"
+
+    with patch("src.main.TEMP_DIR", tmp_path):
+        audio_path = tmp_path / "lecture.wav"
+        audio_path.touch()
+
+        run_capture = Mock()
+
+        with patch(
+            "src.main.parse_args",
+            return_value=_fake_args(tmp_path, display=2),
+        ), patch(
+            "src.main.build_output_paths",
+            return_value=(recording_path, transcript_path),
+        ), patch(
+            "src.main.get_capture_backend",
+            return_value=run_capture,
+        ), patch(
+            "src.main.extract_audio",
+            return_value=None,
+        ), patch(
+            "src.main.transcribe_audio",
+            return_value=None,
+        ):
+            exit_code = main()
+
+        assert exit_code == 0
+        run_capture.assert_called_once_with(recording_path, 2)
+
+
+def test_main_reports_error_and_exits_nonzero_when_display_is_invalid(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    recording_path = tmp_path / "lecture.mov"
+    transcript_path = tmp_path / "lecture.txt"
+
+    failing_run_capture = Mock(
+        side_effect=subprocess.CalledProcessError(1, ["capture"])
+    )
+
+    with patch(
+        "src.main.parse_args",
+        return_value=_fake_args(tmp_path, display=99),
+    ), patch(
+        "src.main.build_output_paths",
+        return_value=(recording_path, transcript_path),
+    ), patch(
+        "src.main.get_capture_backend",
+        return_value=failing_run_capture,
+    ):
+        exit_code = main()
+
+    assert exit_code == 1
+    assert "Recording failed" in capsys.readouterr().out
+    failing_run_capture.assert_called_once_with(recording_path, 99)

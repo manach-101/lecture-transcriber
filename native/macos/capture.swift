@@ -29,7 +29,7 @@ struct CaptureTest {
     static func main() async {
         do {
             guard CommandLine.arguments.count >= 2 else {
-                print("Usage: capture <output_path>")
+                print("Usage: capture <output_path> [display_index]")
                 return
             }
 
@@ -37,15 +37,31 @@ struct CaptureTest {
                 fileURLWithPath: CommandLine.arguments[1]
             )
 
+            var displayIndex = 0
+
+            if CommandLine.arguments.count >= 3 {
+                guard let parsedIndex = Int(CommandLine.arguments[2]) else {
+                    print("Error: invalid display index '\(CommandLine.arguments[2])'.")
+                    exit(1)
+                }
+
+                displayIndex = parsedIndex
+            }
+
             let content = try await SCShareableContent.excludingDesktopWindows(
                 false,
                 onScreenWindowsOnly: true
             )
 
-            guard let display = content.displays.first else {
-                print("No display found.")
-                return
+            guard displayIndex >= 0 && displayIndex < content.displays.count else {
+                print(
+                    "Error: display index \(displayIndex) is out of range. "
+                    + "Available displays: 0..<\(content.displays.count)."
+                )
+                exit(1)
             }
+
+            let display = content.displays[displayIndex]
 
             let filter = SCContentFilter(
                 display: display,

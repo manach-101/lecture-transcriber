@@ -30,6 +30,13 @@ def parse_args() -> argparse.Namespace:
         help="Transcription language code, or 'auto' for automatic detection.",
     )
 
+    parser.add_argument(
+        "--display",
+        type=int,
+        default=0,
+        help="Index of the display to capture.",
+    )
+
     return parser.parse_args()
 
 
@@ -63,7 +70,7 @@ def main() -> int:
 
     try:
         run_capture = get_capture_backend()
-        run_capture(recording_path)
+        run_capture(recording_path, args.display)
     except (
         FileNotFoundError,
         NotImplementedError,
