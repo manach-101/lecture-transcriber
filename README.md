@@ -4,11 +4,11 @@ A local-first lecture recording and transcription tool for macOS.
 
 Lecture Transcriber records the screen and system audio using Apple's native ScreenCaptureKit framework, saves the recording locally, extracts speech-optimized audio with FFmpeg, and generates a raw transcript using Whisper optimized for Apple Silicon.
 
-No recordings, audio files, or transcripts are uploaded to external services.
+No recordings, extracted audio files, or transcripts are uploaded to external services.
 
 ## Current Status
 
-V0 is functional on macOS.
+The core V0 pipeline is stable on macOS. V1 development is currently in progress.
 
 Current pipeline:
 
@@ -48,17 +48,19 @@ The current implementation has been tested on:
 - Manual recording stop using ENTER
 - Automatic audio extraction with FFmpeg
 - Local Whisper transcription
-- Configurable transcription language via `--language` (default: `es`), including automatic detection with `--language auto`
+- Configurable transcription language via `--language` (default: `es`)
+- Automatic language detection with `--language auto`
 - Apple Silicon optimized inference with MLX
-- Automatic cleanup of the temporary WAV file after a successful transcription
-- Temporary WAV file preserved for recovery or debugging if transcription fails
-- User-friendly error messages for missing dependencies and subprocess failures, with a non-zero exit status on failure
-- Platform selector architecture for the capture backend, with macOS currently implemented
+- Automatic cleanup of the temporary WAV file after successful transcription
+- Temporary WAV preservation for recovery or debugging if transcription fails
+- User-friendly error messages for expected runtime failures
+- Non-zero exit status on failure
+- Platform selector architecture for the capture backend
 - Timestamped recording and transcript filenames
-- No external API required
-- No cloud processing
+- No external API required for recording or transcription
+- No cloud processing of recordings or transcripts
 - Terminal-first workflow
-- Pytest coverage for the core pipeline
+- Pytest coverage for the core Python pipeline
 
 ## Architecture
 
@@ -102,7 +104,9 @@ lecture-transcriber/
 
 Screen recording is implemented in Swift using Apple's ScreenCaptureKit.
 
-A small platform selector (`src/capture/selector.py`) chooses the capture backend at runtime based on the operating system. Only the macOS backend is currently implemented; running on any other platform raises a clear `NotImplementedError` instead of attempting to record.
+A small platform selector (`src/capture/selector.py`) chooses the capture backend at runtime based on the operating system.
+
+Only the macOS backend is currently implemented. Running on an unsupported platform raises a clear `NotImplementedError` instead of attempting to record.
 
 The native macOS capture helper produces a `.mov` file containing:
 
@@ -110,9 +114,11 @@ The native macOS capture helper produces a `.mov` file containing:
 - AAC system audio
 - 48 kHz stereo audio
 
-Python resolves the backend through the selector and launches the native capture binary with the output path and the requested display index (`--display`, default `0`). The helper validates the index against the available displays and exits with a clear error if it is out of range.
+Python resolves the backend through the selector and launches the native capture binary with the output path and requested display index.
 
-This platform-specific layer is intentionally separated from the rest of the application so that additional capture backends can be added later without replacing the shared processing and transcription pipeline.
+The `--display` argument defaults to `0`. The native helper validates the requested index against the available displays and exits with an error if the index is invalid.
+
+This platform-specific layer is intentionally separated from the rest of the application so additional capture backends can be added later without replacing the shared processing and transcription pipeline.
 
 ### Audio Processing
 
@@ -125,7 +131,11 @@ Mono
 PCM 16-bit
 ```
 
-This produces a lightweight speech-oriented audio file for transcription.
+This produces a speech-oriented intermediate audio file for transcription.
+
+The temporary WAV is automatically deleted after successful transcription.
+
+If transcription fails, the WAV is preserved so it can be reused for debugging or manual recovery.
 
 ### Transcription
 
@@ -135,15 +145,23 @@ Transcription runs locally using:
 mlx-community/whisper-large-v3-turbo
 ```
 
-MLX is used to take advantage of Apple Silicon hardware.
+MLX is used to take advantage of Apple Silicon hardware acceleration.
 
 The resulting transcript is saved as a plain `.txt` file.
+
+The Whisper model may need to be downloaded the first time it is used. After the model is available locally, transcription runs on-device.
+
+Lecture recordings, extracted audio, and transcripts are not uploaded for transcription.
 
 ## Requirements
 
 ### macOS
 
-The current V0 supports macOS only.
+The current implementation supports macOS only.
+
+An Apple Silicon Mac is currently required for the MLX transcription backend.
+
+Intel Macs are not currently supported or tested.
 
 Tested configuration:
 
@@ -229,14 +247,14 @@ System Settings
 
 Enable permission for your terminal application.
 
-The current V0 captures system audio but does not capture microphone input.
+The current implementation captures system audio but does not capture microphone input.
 
 ## Setup
 
 Clone the repository:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/manach-101/lecture-transcriber.git
 ```
 
 Enter the project directory:
@@ -269,17 +287,33 @@ Compile the macOS capture helper:
 swiftc -parse-as-library native/macos/capture.swift -o native/macos/capture
 ```
 
-The compiled binary is intentionally excluded from Git and should be built locally.
+The compiled binary is intentionally excluded from Git and should currently be built locally.
 
 ## Testing
 
-The core pipeline is covered by automated tests written with `pytest`, including audio extraction, transcription, file naming, capture backend selection, and error handling.
+The core Python pipeline is covered by automated tests written with `pytest`.
 
-Run the test suite:
+Coverage includes:
+
+- audio extraction command generation
+- transcription command generation
+- configurable transcription languages
+- automatic language detection
+- file naming and output paths
+- capture backend selection
+- macOS display argument forwarding
+- temporary audio cleanup
+- runtime error handling
+
+Run the full test suite with:
 
 ```bash
-pytest
+python3 -m pytest -v
 ```
+
+The native Swift capture helper is not currently covered by automated tests.
+
+Capture behavior and display selection have been manually validated on the tested macOS configuration.
 
 ## Usage
 
@@ -289,7 +323,7 @@ Start a recording with:
 python3 -m src.main --name discrete_math
 ```
 
-The `--name` argument is used to generate the output filenames.
+The `--name` argument is required and is used to generate the output filenames.
 
 For example:
 
@@ -297,7 +331,11 @@ For example:
 python3 -m src.main --name systems_engineering
 ```
 
-The `--language` argument is optional and controls the transcription language passed to Whisper. It defaults to Spanish (`es`) if not provided.
+### Language Selection
+
+The `--language` argument is optional and controls the transcription language passed to Whisper.
+
+Spanish (`es`) is used by default.
 
 Example using English:
 
@@ -311,19 +349,31 @@ Example using automatic language detection:
 python3 -m src.main --name systems_engineering --language auto
 ```
 
-When `--language auto` is used, the language is not passed to Whisper, and Whisper detects the spoken language automatically.
+When `--language auto` is used, no explicit language is passed to Whisper and the model detects the spoken language automatically.
 
-The `--display` argument is optional and selects which display to record by index. It defaults to `0` (the first detected display).
+### Display Selection
 
-Example selecting a second display:
+The `--display` argument is optional and selects which display to record by index.
+
+Display `0` is used by default.
+
+Example selecting the second detected display:
 
 ```bash
 python3 -m src.main --name systems_engineering --display 1
 ```
 
-If the index does not correspond to an available display, the native capture helper reports a clear error and exits with a non-zero status.
+Language and display options can be combined:
 
-The application will start recording and display:
+```bash
+python3 -m src.main --name systems_engineering --language auto --display 1
+```
+
+If the requested display index does not exist, the application reports an error and exits with a non-zero status.
+
+### Recording
+
+After starting the application, the native capture helper displays:
 
 ```text
 Recording started...
@@ -334,13 +384,14 @@ Press ENTER when the lecture is finished.
 
 The application will then automatically:
 
-1. stop the recording;
-2. save the video;
-3. extract the audio with FFmpeg;
-4. convert the audio to a Whisper-friendly format;
-5. run Whisper locally;
-6. generate the transcript;
-7. display the final output paths.
+1. stop the recording
+2. save the video
+3. extract the audio with FFmpeg
+4. convert the audio to a Whisper-friendly format
+5. run Whisper locally
+6. generate the transcript
+7. remove the temporary WAV after successful transcription
+8. display the final output paths
 
 Example:
 
@@ -356,15 +407,22 @@ Transcript saved:
 
 ## Error Handling
 
-Lecture Transcriber replaces raw Python tracebacks with concise, user-facing error messages for expected runtime failures, including:
+Lecture Transcriber replaces raw Python tracebacks with concise user-facing messages for expected runtime failures.
 
-- a missing or uncompiled macOS capture binary
-- a missing FFmpeg installation
-- a missing MLX Whisper installation
-- a subprocess failure during capture, audio extraction, or transcription
-- an invalid `--display` index
+Handled cases include:
 
-On any of these failures, the application prints a short explanation of what failed and exits with a non-zero status. See [Output Files](#output-files) for how the temporary audio file is handled when transcription fails.
+- missing or uncompiled macOS capture binary
+- missing FFmpeg executable
+- missing MLX Whisper executable
+- unsupported capture platform
+- capture subprocess failure
+- FFmpeg subprocess failure
+- transcription subprocess failure
+- invalid display index
+
+Expected runtime failures return a non-zero exit status.
+
+If transcription fails after the WAV has already been extracted, the WAV is preserved in `temp/` so the transcription can be retried without repeating the recording.
 
 ## Output Files
 
@@ -392,57 +450,72 @@ Example:
 transcripts/discrete_math_2026-09-07_21-22-28.txt
 ```
 
-Temporary audio files are stored in:
+Temporary audio is stored in:
 
 ```text
 temp/
 ```
 
-The temporary WAV file is deleted automatically after a successful transcription. If transcription fails, the WAV file is preserved in `temp/` so it can be reused for debugging or a manual retry.
+The temporary WAV file is deleted automatically after successful transcription.
 
-These directories are excluded from Git.
+If transcription fails, the WAV file is preserved for debugging or manual retry.
+
+The following generated directories are excluded from Git:
+
+```text
+recordings/
+transcripts/
+temp/
+```
 
 ## Privacy
 
 Lecture Transcriber is designed as a local-first application.
 
-The current V0 does not upload:
+The current implementation does not upload:
 
 - recordings
 - extracted audio
 - transcripts
 
-to external services.
+to external transcription services.
 
 Whisper inference runs locally on the machine.
 
-No API key is required.
+No API key is required for the recording or transcription pipeline.
+
+The Whisper model may require a one-time download before first use.
 
 Users are responsible for ensuring they have permission to record lectures, meetings, calls, or other content.
 
 ## Current Limitations
 
-V0 currently:
+The current implementation:
 
-- supports macOS only (a platform selector exists in the codebase, but only the macOS backend is implemented)
-- supports selecting a display by index, but not by window
+- supports macOS only
+- currently requires an Apple Silicon Mac for MLX transcription
+- supports selecting a display by index but not selecting an individual window
 - captures system audio but not microphone input
-- defaults to Spanish for transcription; the language is configurable via `--language`, including automatic detection
+- defaults to Spanish for transcription, although the language can be configured or automatically detected
 - requires the native Swift helper to be compiled manually
-- requires FFmpeg to be installed
+- requires FFmpeg to be installed separately
 - requires Python and a virtual environment
 - has no graphical interface
 - does not include speaker diarization
 - does not generate summaries or explanations
-- automated tests cover the Python pipeline only; the native Swift capture helper is not covered by automated tests
+- does not currently provide structured logging
+- provides limited progress information during long transcription jobs
+- does not currently ship as a standalone macOS application
+- does not currently support Windows
+- does not currently include automated tests for the native Swift capture helper
 
 ## Roadmap
 
 ### V1
 
-- selectable window, in addition to the existing selectable display index
+- selectable window in addition to display selection
 - structured logging
-- progress information during recording and transcription
+- cleaner progress information during recording and transcription
 - optional microphone capture
 - automated native helper compilation
 
@@ -459,15 +532,17 @@ Optional LLM API
     └── questions.md
 ```
 
-The local recording and transcription pipeline should continue working without any API key.
+The local recording and transcription pipeline should continue working without an API key.
 
 ### V2
 
-- Windows capture backend
 - standalone macOS application
+- graphical interface
+- Windows capture backend
+- Windows transcription backend
 - standalone Windows application
-- packaging without requiring Python or FFmpeg installation
-- possible PyInstaller or equivalent distribution workflow
+- packaging without requiring users to manually install Python or FFmpeg
+- simplified installation and first-run setup
 
 ### V3
 
@@ -487,9 +562,11 @@ The project follows a few simple principles:
 - minimal external dependencies
 - platform-specific capture separated from shared logic
 - reliability over unnecessary complexity
+- explicit error handling
+- testable orchestration
 - no database for the initial versions
-- no frontend or GUI until the core pipeline is stable
 - no external LLM dependency for basic functionality
+- no unnecessary abstraction before the core workflow is stable
 
 ## License
 
