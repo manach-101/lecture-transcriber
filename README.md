@@ -53,8 +53,20 @@ The current implementation has been tested on:
 - Apple Silicon optimized inference with MLX
 - Automatic cleanup of the temporary WAV file after successful transcription
 - Temporary WAV preservation for recovery or debugging if transcription fails
+- Timestamped temporary WAV filenames so a preserved recovery file is never
+  silently overwritten by a later run with the same `--name`
 - User-friendly error messages for expected runtime failures
+- Actionable errors when `ffmpeg`, `mlx_whisper`, or the native capture
+  binary cannot be found, including how to fix it
 - Non-zero exit status on failure
+- Stage-by-stage progress output (`==> Recording`, `==> Extracting audio`,
+  `==> Transcribing audio`, `==> Done`) with clear start/complete messages
+- Suppressed FFmpeg banner/stats noise on successful runs; FFmpeg errors
+  remain visible
+- Clean Ctrl+C handling: no raw Python traceback, exits with status `130`,
+  and preserves the recording and/or temporary audio whenever they exist
+- Automated build script for the native macOS capture helper
+  (`scripts/build_capture.sh`)
 - Platform selector architecture for the capture backend
 - Timestamped recording and transcript filenames
 - No external API required for recording or transcription
@@ -284,6 +296,14 @@ pip install -r requirements.txt
 Compile the macOS capture helper:
 
 ```bash
+scripts/build_capture.sh
+```
+
+This checks that `swiftc` is available and compiles
+`native/macos/capture.swift` to `native/macos/capture`. You can still run
+the underlying command directly if you prefer:
+
+```bash
 swiftc -parse-as-library native/macos/capture.swift -o native/macos/capture
 ```
 
@@ -393,17 +413,41 @@ The application will then automatically:
 7. remove the temporary WAV after successful transcription
 8. display the final output paths
 
-Example:
+Each stage prints a short header so the pipeline is easy to follow. Example:
 
 ```text
-Done.
+==> Recording
+Output: /path/to/lecture-transcriber/recordings/discrete_math_2026-09-07_21-22-28.mov
 
+Recording started...
+Press ENTER to stop.
+Recording finished.
+
+==> Extracting audio
+Audio extraction complete.
+
+==> Transcribing audio
+Transcription complete.
+
+==> Done
 Recording saved:
 /path/to/lecture-transcriber/recordings/discrete_math_2026-09-07_21-22-28.mov
-
 Transcript saved:
 /path/to/lecture-transcriber/transcripts/discrete_math_2026-09-07_21-22-28.txt
 ```
+
+### Cancelling with Ctrl+C
+
+Pressing Ctrl+C during audio extraction or transcription is handled cleanly:
+the application prints `<stage> cancelled.`, lists whichever output files
+still exist on disk (the recording and/or the temporary WAV) so you know
+what to retry from, and exits with status `130` instead of printing a raw
+Python traceback.
+
+Ctrl+C during the recording stage itself is a known limitation: SIGINT goes
+directly to the native Swift capture helper, which does not currently trap
+it, so the `.mov` file may not finish writing correctly if interrupted mid
+recording. Prefer pressing ENTER to stop the recording normally.
 
 ## Error Handling
 
@@ -411,18 +455,21 @@ Lecture Transcriber replaces raw Python tracebacks with concise user-facing mess
 
 Handled cases include:
 
-- missing or uncompiled macOS capture binary
-- missing FFmpeg executable
-- missing MLX Whisper executable
+- missing or uncompiled macOS capture binary (message points to
+  `scripts/build_capture.sh`)
+- missing FFmpeg executable (message points to `brew install ffmpeg`)
+- missing MLX Whisper executable (message points to
+  `pip install -r requirements.txt`)
 - unsupported capture platform
 - capture subprocess failure
 - FFmpeg subprocess failure
 - transcription subprocess failure
 - invalid display index
+- user cancellation via Ctrl+C (see [Cancelling with Ctrl+C](#cancelling-with-ctrlc))
 
 Expected runtime failures return a non-zero exit status.
 
-If transcription fails after the WAV has already been extracted, the WAV is preserved in `temp/` so the transcription can be retried without repeating the recording.
+If transcription fails after the WAV has already been extracted, the WAV is preserved in `temp/` so the transcription can be retried without repeating the recording. The temporary WAV filename includes the same timestamp as the recording and transcript, so a preserved file from a failed run is never overwritten by a later run using the same `--name`.
 
 ## Output Files
 
@@ -497,14 +544,18 @@ The current implementation:
 - supports selecting a display by index but not selecting an individual window
 - captures system audio but not microphone input
 - defaults to Spanish for transcription, although the language can be configured or automatically detected
-- requires the native Swift helper to be compiled manually
+- requires the native Swift helper to be compiled locally, though
+  `scripts/build_capture.sh` automates the compile step
 - requires FFmpeg to be installed separately
 - requires Python and a virtual environment
 - has no graphical interface
 - does not include speaker diarization
 - does not generate summaries or explanations
-- does not currently provide structured logging
-- provides limited progress information during long transcription jobs
+- does not currently provide structured logging (plain `print`-based stage
+  output is used instead)
+- if Ctrl+C is pressed while the native capture helper is actively
+  recording, the `.mov` file may not finish writing correctly; pressing
+  ENTER to stop is the reliable way to end a recording
 - does not currently ship as a standalone macOS application
 - does not currently support Windows
 - does not currently include automated tests for the native Swift capture helper
@@ -515,9 +566,9 @@ The current implementation:
 
 - selectable window in addition to display selection
 - structured logging
-- cleaner progress information during recording and transcription
 - optional microphone capture
-- automated native helper compilation
+- graceful Ctrl+C handling in the native capture helper itself, so a
+  recording interrupted mid-capture finalizes cleanly
 
 ### V1.5
 

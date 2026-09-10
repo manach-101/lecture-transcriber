@@ -224,6 +224,136 @@ def test_main_passes_explicit_display_to_capture_backend(
         run_capture.assert_called_once_with(recording_path, 2)
 
 
+def test_main_uses_timestamped_temp_audio_filename(
+    tmp_path: Path,
+) -> None:
+    recording_path = tmp_path / "lecture_2026-09-10_12-00-00.mov"
+    transcript_path = tmp_path / "lecture_2026-09-10_12-00-00.txt"
+
+    with patch("src.main.TEMP_DIR", tmp_path):
+        run_capture = Mock()
+        captured_audio_path = {}
+
+        def fake_extract_audio(video_path, audio_path):
+            captured_audio_path["path"] = audio_path
+            audio_path.touch()
+
+        with patch(
+            "src.main.parse_args", return_value=_fake_args(tmp_path)
+        ), patch(
+            "src.main.build_output_paths",
+            return_value=(recording_path, transcript_path),
+        ), patch(
+            "src.main.get_capture_backend",
+            return_value=run_capture,
+        ), patch(
+            "src.main.extract_audio",
+            side_effect=fake_extract_audio,
+        ), patch(
+            "src.main.transcribe_audio",
+            return_value=None,
+        ):
+            exit_code = main()
+
+        assert exit_code == 0
+        assert captured_audio_path["path"] == (
+            tmp_path / "lecture_2026-09-10_12-00-00.wav"
+        )
+
+
+def test_main_cancelled_during_recording_preserves_partial_recording(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    recording_path = tmp_path / "lecture.mov"
+    transcript_path = tmp_path / "lecture.txt"
+
+    recording_path.touch()
+
+    failing_run_capture = Mock(side_effect=KeyboardInterrupt())
+
+    with patch("src.main.parse_args", return_value=_fake_args(tmp_path)), patch(
+        "src.main.build_output_paths",
+        return_value=(recording_path, transcript_path),
+    ), patch(
+        "src.main.get_capture_backend",
+        return_value=failing_run_capture,
+    ):
+        exit_code = main()
+
+    output = capsys.readouterr().out
+    assert exit_code == 130
+    assert "Recording cancelled" in output
+    assert str(recording_path) in output
+
+
+def test_main_cancelled_during_extraction_preserves_recording_and_audio(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    recording_path = tmp_path / "lecture.mov"
+    transcript_path = tmp_path / "lecture.txt"
+
+    with patch("src.main.TEMP_DIR", tmp_path):
+        recording_path.touch()
+
+        with patch(
+            "src.main.parse_args", return_value=_fake_args(tmp_path)
+        ), patch(
+            "src.main.build_output_paths",
+            return_value=(recording_path, transcript_path),
+        ), patch(
+            "src.main.get_capture_backend",
+            return_value=lambda path, display: None,
+        ), patch(
+            "src.main.extract_audio",
+            side_effect=KeyboardInterrupt(),
+        ):
+            exit_code = main()
+
+    output = capsys.readouterr().out
+    assert exit_code == 130
+    assert "Audio extraction cancelled" in output
+    assert str(recording_path) in output
+
+
+def test_main_cancelled_during_transcription_preserves_recording_and_audio(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    recording_path = tmp_path / "lecture.mov"
+    transcript_path = tmp_path / "lecture.txt"
+
+    with patch("src.main.TEMP_DIR", tmp_path):
+        recording_path.touch()
+        audio_path = tmp_path / "lecture.wav"
+        audio_path.touch()
+
+        with patch(
+            "src.main.parse_args", return_value=_fake_args(tmp_path)
+        ), patch(
+            "src.main.build_output_paths",
+            return_value=(recording_path, transcript_path),
+        ), patch(
+            "src.main.get_capture_backend",
+            return_value=lambda path, display: None,
+        ), patch(
+            "src.main.extract_audio",
+            return_value=None,
+        ), patch(
+            "src.main.transcribe_audio",
+            side_effect=KeyboardInterrupt(),
+        ):
+            exit_code = main()
+
+    output = capsys.readouterr().out
+    assert exit_code == 130
+    assert "Transcription cancelled" in output
+    assert str(recording_path) in output
+    assert str(audio_path) in output
+    assert audio_path.exists()
+
+
 def test_main_reports_error_and_exits_nonzero_when_display_is_invalid(
     tmp_path: Path,
     capsys: pytest.CaptureFixture,

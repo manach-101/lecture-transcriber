@@ -18,6 +18,9 @@ def test_extract_audio_builds_expected_ffmpeg_command(tmp_path: Path) -> None:
     expected_command = [
         "ffmpeg",
         "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
         "-i",
         str(input_video),
         "-vn",
@@ -47,4 +50,19 @@ def test_extract_audio_raises_when_input_does_not_exist(
             missing_video,
             output_audio,
         )
-        
+
+
+def test_extract_audio_raises_actionable_error_when_ffmpeg_missing(
+    tmp_path: Path,
+) -> None:
+    input_video = tmp_path / "lecture.mov"
+    output_audio = tmp_path / "lecture.wav"
+
+    input_video.touch()
+
+    with patch(
+        "src.processing.audio_extractor.shutil.which",
+        return_value=None,
+    ):
+        with pytest.raises(FileNotFoundError, match="ffmpeg"):
+            extract_audio(input_video, output_audio)

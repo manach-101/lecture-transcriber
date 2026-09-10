@@ -12,6 +12,8 @@ from src.transcription.whisper_transcriber import transcribe_audio
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEMP_DIR = PROJECT_ROOT / "temp"
 
+SIGINT_EXIT_CODE = 130
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -58,19 +60,31 @@ def report_failure(stage: str, error: BaseException) -> None:
     print(f"\n{stage} failed: {error}")
 
 
+def report_cancelled(stage: str, preserved_paths: list) -> None:
+    print(f"\n{stage} cancelled.")
+
+    for path in preserved_paths:
+        if path.exists():
+            print(f"Preserved: {path}")
+
+
 def main() -> int:
     args = parse_args()
 
     class_name = args.name
 
     recording_path, transcript_path = build_output_paths(class_name)
-    audio_path = TEMP_DIR / f"{class_name}.wav"
+    audio_path = TEMP_DIR / f"{transcript_path.stem}.wav"
 
-    print(f"Recording will be saved to:\n{recording_path}\n")
+    print("==> Recording")
+    print(f"Output: {recording_path}\n")
 
     try:
         run_capture = get_capture_backend()
         run_capture(recording_path, args.display)
+    except KeyboardInterrupt:
+        report_cancelled("Recording", [recording_path])
+        return SIGINT_EXIT_CODE
     except (
         FileNotFoundError,
         NotImplementedError,
@@ -79,18 +93,23 @@ def main() -> int:
         report_failure("Recording", error)
         return 1
 
-    print("\nExtracting audio...")
+    print("\n==> Extracting audio")
 
     try:
         extract_audio(
             recording_path,
             audio_path,
         )
+    except KeyboardInterrupt:
+        report_cancelled("Audio extraction", [recording_path, audio_path])
+        return SIGINT_EXIT_CODE
     except (FileNotFoundError, subprocess.CalledProcessError) as error:
         report_failure("Audio extraction", error)
         return 1
 
-    print("\nTranscribing audio...")
+    print("Audio extraction complete.")
+
+    print("\n==> Transcribing audio")
 
     try:
         transcribe_and_cleanup(
@@ -98,16 +117,25 @@ def main() -> int:
             transcript_path,
             args.language,
         )
+    except KeyboardInterrupt:
+        report_cancelled("Transcription", [recording_path, audio_path])
+        return SIGINT_EXIT_CODE
     except (FileNotFoundError, subprocess.CalledProcessError) as error:
         report_failure("Transcription", error)
         return 1
 
-    print("\nDone.")
-    print(f"\nRecording saved:\n{recording_path}")
-    print(f"\nTranscript saved:\n{transcript_path}")
+    print("Transcription complete.")
+
+    print("\n==> Done")
+    print(f"Recording saved:\n{recording_path}")
+    print(f"Transcript saved:\n{transcript_path}")
 
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\nCancelled.")
+        sys.exit(SIGINT_EXIT_CODE)

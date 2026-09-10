@@ -39,6 +39,17 @@ def test_run_capture_uses_explicit_display(tmp_path: Path) -> None:
     )
 
 
+def test_run_capture_raises_actionable_error_when_binary_missing(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "recording.mov"
+    missing_binary = tmp_path / "capture"
+
+    with patch("src.capture.macos.CAPTURE_BINARY", missing_binary):
+        with pytest.raises(FileNotFoundError, match="scripts/build_capture.sh"):
+            run_capture(output_path)
+
+
 def test_run_capture_propagates_error_for_invalid_display(
     tmp_path: Path,
 ) -> None:
