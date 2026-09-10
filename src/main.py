@@ -1,4 +1,6 @@
 import argparse
+import subprocess
+import sys
 from pathlib import Path
 
 from src.capture.selector import get_capture_backend
@@ -45,7 +47,11 @@ def transcribe_and_cleanup(
     audio_path.unlink()
 
 
-def main() -> None:
+def report_failure(stage: str, error: BaseException) -> None:
+    print(f"\n{stage} failed: {error}")
+
+
+def main() -> int:
     args = parse_args()
 
     class_name = args.name
@@ -55,28 +61,46 @@ def main() -> None:
 
     print(f"Recording will be saved to:\n{recording_path}\n")
 
-    run_capture = get_capture_backend()
-    run_capture(recording_path)
+    try:
+        run_capture = get_capture_backend()
+        run_capture(recording_path)
+    except (
+        FileNotFoundError,
+        NotImplementedError,
+        subprocess.CalledProcessError,
+    ) as error:
+        report_failure("Recording", error)
+        return 1
 
     print("\nExtracting audio...")
 
-    extract_audio(
-        recording_path,
-        audio_path,
-    )
+    try:
+        extract_audio(
+            recording_path,
+            audio_path,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError) as error:
+        report_failure("Audio extraction", error)
+        return 1
 
     print("\nTranscribing audio...")
 
-    transcribe_and_cleanup(
-        audio_path,
-        transcript_path,
-        args.language,
-    )
+    try:
+        transcribe_and_cleanup(
+            audio_path,
+            transcript_path,
+            args.language,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError) as error:
+        report_failure("Transcription", error)
+        return 1
 
     print("\nDone.")
     print(f"\nRecording saved:\n{recording_path}")
     print(f"\nTranscript saved:\n{transcript_path}")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
