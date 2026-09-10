@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from src.capture.macos import run_capture
+from src.capture.selector import get_capture_backend
 from src.processing.audio_extractor import extract_audio
 from src.processing.file_manager import build_output_paths
 from src.transcription.whisper_transcriber import transcribe_audio
@@ -41,6 +41,7 @@ def main() -> None:
 
     print(f"Recording will be saved to:\n{recording_path}\n")
 
+    run_capture = get_capture_backend()
     run_capture(recording_path)
 
     print("\nExtracting audio...")
