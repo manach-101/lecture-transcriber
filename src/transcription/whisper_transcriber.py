@@ -25,8 +25,6 @@ def transcribe_audio(
         str(audio_path),
         "--model",
         MODEL_NAME,
-        "--language",
-        language,
         "--output-dir",
         str(transcript_path.parent),
         "--output-name",
@@ -34,6 +32,9 @@ def transcribe_audio(
         "--output-format",
         "txt",
     ]
+
+    if language != "auto":
+        command.extend(["--language", language])
 
     subprocess.run(
         command,

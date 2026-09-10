@@ -22,6 +22,12 @@ def parse_args() -> argparse.Namespace:
         help="Name used for recording and transcript files.",
     )
 
+    parser.add_argument(
+        "--language",
+        default="es",
+        help="Transcription language code, or 'auto' for automatic detection.",
+    )
+
     return parser.parse_args()
 
 
@@ -49,7 +55,7 @@ def main() -> None:
     transcribe_audio(
         audio_path,
         transcript_path,
-        language="es",
+        language=args.language,
     )
 
     print("\nDone.")

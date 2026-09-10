@@ -277,6 +277,22 @@ For example:
 python3 -m src.main --name systems_engineering
 ```
 
+The `--language` argument is optional and controls the transcription language passed to Whisper. It defaults to Spanish (`es`) if not provided.
+
+Example using English:
+
+```bash
+python3 -m src.main --name systems_engineering --language en
+```
+
+Example using automatic language detection:
+
+```bash
+python3 -m src.main --name systems_engineering --language auto
+```
+
+When `--language auto` is used, the language is not passed to Whisper, and Whisper detects the spoken language automatically.
+
 The application will start recording and display:
 
 ```text
