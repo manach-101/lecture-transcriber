@@ -85,6 +85,11 @@ lecture-transcriber/
 │   └── macos/
 │       └── capture.swift
 │
+├── assets/
+│   └── images/
+│       ├── cat_hero.png (original mockup, kept for reference)
+│       └── cat_hero_bg.png (raw crop used as the live GUI background)
+│
 ├── src/
 │   ├── capture/
 │   │   ├── __init__.py
@@ -100,8 +105,17 @@ lecture-transcriber/
 │   │   ├── __init__.py
 │   │   └── whisper_transcriber.py
 │   │
+│   ├── gui/
+│   │   ├── __init__.py
+│   │   ├── main_window.py
+│   │   ├── worker.py
+│   │   ├── pipeline.py
+│   │   ├── hero_background.py
+│   │   └── styles.py
+│   │
 │   ├── __init__.py
-│   └── main.py
+│   ├── main.py
+│   └── gui_main.py
 │
 ├── recordings/
 ├── transcripts/
@@ -335,6 +349,38 @@ The native Swift capture helper is not currently covered by automated tests.
 
 Capture behavior and display selection have been manually validated on the tested macOS configuration.
 
+## Desktop GUI
+
+A first desktop GUI is available on top of the same backend used by the
+CLI, built with PySide6.
+
+Launch it with:
+
+```bash
+python3 -m src.gui_main
+```
+
+The GUI currently supports:
+
+- naming a recording
+- selecting the display index (window capture is not exposed)
+- choosing the transcription language (Auto / Spanish / English)
+- starting and stopping a recording without a terminal
+- live status (`Ready`, `Recording`, `Extracting audio`, `Transcribing`,
+  `Done`, `Error`) and an elapsed recording timer
+- opening the `recordings/` and `transcripts/` folders
+- showing the most recent recording/transcript path
+
+Recording and transcription run on a background thread, so the window
+stays responsive while ffmpeg and Whisper run.
+
+The GUI uses a background image at `assets/images/cat_hero_bg.png`. If that
+file is not present, it falls back to a plain dark gradient background
+automatically — see `assets/images/README.md`.
+
+The GUI is an additional entry point; the CLI (`python3 -m src.main`)
+is unchanged.
+
 ## Usage
 
 Start a recording with:
@@ -548,7 +594,9 @@ The current implementation:
   `scripts/build_capture.sh` automates the compile step
 - requires FFmpeg to be installed separately
 - requires Python and a virtual environment
-- has no graphical interface
+- ships a first desktop GUI (PySide6) covering the core record/transcribe
+  workflow only; it does not yet expose window capture, packaging, or
+  advanced settings
 - does not include speaker diarization
 - does not generate summaries or explanations
 - does not currently provide structured logging (plain `print`-based stage

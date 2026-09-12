@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.capture.selector import get_capture_backend
+from src.capture.selector import get_capture_backend, get_capture_controls
 
 
 def test_get_capture_backend_returns_macos_backend_on_darwin() -> None:
@@ -24,3 +24,28 @@ def test_get_capture_backend_raises_for_unsupported_platform() -> None:
     ):
         with pytest.raises(NotImplementedError):
             get_capture_backend()
+
+
+def test_get_capture_controls_returns_macos_start_and_stop_on_darwin() -> None:
+    with patch(
+        "src.capture.selector.platform.system",
+        return_value="Darwin",
+    ):
+        from src.capture.macos import (
+            start_capture_process as macos_start,
+            stop_capture_process as macos_stop,
+        )
+
+        start, stop = get_capture_controls()
+
+    assert start is macos_start
+    assert stop is macos_stop
+
+
+def test_get_capture_controls_raises_for_unsupported_platform() -> None:
+    with patch(
+        "src.capture.selector.platform.system",
+        return_value="Windows",
+    ):
+        with pytest.raises(NotImplementedError):
+            get_capture_controls()
