@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
@@ -10,6 +11,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -32,7 +34,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Lecture Transcriber")
         self.resize(1180, 720)
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(900, 680)
         self.setStyleSheet(STYLESHEET)
 
         self._worker = None
@@ -70,8 +72,8 @@ class MainWindow(QMainWindow):
         panel.setFixedWidth(400)
 
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(28, 28, 28, 24)
-        layout.setSpacing(14)
+        layout.setContentsMargins(26, 24, 26, 20)
+        layout.setSpacing(11)
 
         title = QLabel("Lecture Transcriber")
         title.setObjectName("titleLabel")
@@ -95,7 +97,7 @@ class MainWindow(QMainWindow):
         supporting.setWordWrap(True)
         layout.addWidget(supporting)
 
-        layout.addSpacing(10)
+        layout.addSpacing(6)
 
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("e.g. discrete_math")
@@ -104,10 +106,17 @@ class MainWindow(QMainWindow):
         self.capture_target_combo = QComboBox()
         self.capture_target_combo.addItem("Display")
         self.capture_target_combo.setEnabled(False)
+        self.capture_target_combo.setToolTip(
+            "This version records a full display. Window capture isn't "
+            "supported yet."
+        )
         layout.addWidget(self._labeled("CAPTURE TARGET", self.capture_target_combo))
 
         self.display_spin = QSpinBox()
         self.display_spin.setRange(0, MAX_DISPLAY_INDEX)
+        self.display_spin.setToolTip(
+            "Which screen to record. 0 is your main display."
+        )
         layout.addWidget(self._labeled("DISPLAY INDEX", self.display_spin))
 
         self.language_combo = QComboBox()
@@ -174,6 +183,13 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(status_row)
 
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(4)
+        self.progress_bar.hide()
+        layout.addWidget(self.progress_bar)
+
         self.path_value = QLabel("No recordings yet.")
         self.path_value.setObjectName("pathValue")
         self.path_value.setWordWrap(True)
@@ -208,8 +224,11 @@ class MainWindow(QMainWindow):
         color = STATUS_COLORS.get(stage, TEXT_PRIMARY)
         self.status_value.setStyleSheet(f"color: {color};")
 
+        self.progress_bar.setVisible(stage in (Stage.EXTRACTING, Stage.TRANSCRIBING))
+
         if detail:
             self.path_value.setText(detail)
+            self.path_value.setToolTip("")
 
     def _tick_elapsed(self) -> None:
         if self._recording_started_at is None:
@@ -260,19 +279,23 @@ class MainWindow(QMainWindow):
     def _on_recording_started(self, recording_path: str, transcript_path: str) -> None:
         self._last_recording_path = recording_path
         self._last_transcript_path = transcript_path
-        self.path_value.setText(f"Recording to:\n{recording_path}")
+        self.path_value.setText(f"Recording to “{Path(recording_path).name}”")
+        self.path_value.setToolTip(recording_path)
 
     def _on_finished_ok(self, recording_path: str, transcript_path: str) -> None:
         self._last_recording_path = recording_path
         self._last_transcript_path = transcript_path
         self.path_value.setText(
-            f"Recording:\n{recording_path}\n\nTranscript:\n{transcript_path}"
+            f"Saved “{Path(recording_path).name}”\n"
+            f"Transcript “{Path(transcript_path).name}”"
         )
+        self.path_value.setToolTip(f"{recording_path}\n{transcript_path}")
         self._finish_run()
 
     def _on_failed(self, stage: str, message: str) -> None:
         stage_name = STAGE_LABELS.get(stage, stage)
         self.path_value.setText(f"{stage_name} failed:\n{message}")
+        self.path_value.setToolTip("")
         self._finish_run()
 
     def _finish_run(self) -> None:

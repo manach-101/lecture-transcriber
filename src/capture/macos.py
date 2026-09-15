@@ -1,9 +1,10 @@
 from pathlib import Path
 import subprocess
 
+from src.app_paths import bundle_root
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CAPTURE_BINARY = PROJECT_ROOT / "native" / "macos" / "capture"
+
+CAPTURE_BINARY = bundle_root() / "native" / "macos" / "capture"
 
 
 def run_capture(output_path: Path, display: int = 0) -> None:

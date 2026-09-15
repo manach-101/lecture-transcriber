@@ -6,6 +6,10 @@ temp/
 # Native build artifacts
 native/macos/capture
 
+# macOS app packaging output
+build/
+dist/
+
 # Python
 __pycache__/
 *.py[cod]

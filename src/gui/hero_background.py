@@ -1,13 +1,12 @@
-from pathlib import Path
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QPixmap, QLinearGradient, QColor
 from PySide6.QtWidgets import QWidget
 
+from src.app_paths import bundle_root
 from src.gui.styles import BG_FALLBACK_TOP, BG_FALLBACK_BOTTOM
 
 
-ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets" / "images"
+ASSETS_DIR = bundle_root() / "assets" / "images"
 HERO_IMAGE_PATH = ASSETS_DIR / "cat_hero_bg.png"
 
 

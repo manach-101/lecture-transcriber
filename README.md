@@ -114,8 +114,16 @@ lecture-transcriber/
 │   │   └── styles.py
 │   │
 │   ├── __init__.py
+│   ├── app_paths.py
 │   ├── main.py
 │   └── gui_main.py
+│
+├── packaging/
+│   └── LectureTranscriber.spec
+│
+├── scripts/
+│   ├── build_capture.sh
+│   └── build_macos_app.sh
 │
 ├── recordings/
 ├── transcripts/
@@ -367,9 +375,11 @@ The GUI currently supports:
 - choosing the transcription language (Auto / Spanish / English)
 - starting and stopping a recording without a terminal
 - live status (`Ready`, `Recording`, `Extracting audio`, `Transcribing`,
-  `Done`, `Error`) and an elapsed recording timer
+  `Done`, `Error`) with a busy indicator while audio is extracted/transcribed,
+  and an elapsed recording timer
 - opening the `recordings/` and `transcripts/` folders
-- showing the most recent recording/transcript path
+- showing the most recent recording/transcript filename (hover for the full
+  path)
 
 Recording and transcription run on a background thread, so the window
 stays responsive while ffmpeg and Whisper run.
@@ -380,6 +390,89 @@ automatically — see `assets/images/README.md`.
 
 The GUI is an additional entry point; the CLI (`python3 -m src.main`)
 is unchanged.
+
+## macOS App Packaging
+
+The GUI can be built into a double-clickable `Lecture Transcriber.app`
+using [PyInstaller](https://pyinstaller.org), chosen because the app has a
+very light in-process dependency footprint: it only imports PySide6 and the
+standard library. Recording, audio extraction, and transcription are all
+shelled out to external command-line tools (the compiled Swift capture
+helper, `ffmpeg`, and `mlx_whisper`), so none of the heavy ML stack
+(torch/mlx/numba/scipy) needs to be frozen into the app itself.
+
+### Build
+
+```bash
+scripts/build_macos_app.sh
+```
+
+This compiles the native capture helper, runs PyInstaller against
+`packaging/LectureTranscriber.spec`, and validates that the resulting
+bundle actually contains the capture binary and background image before
+reporting success. It targets Apple Silicon (`arm64`) only.
+
+### Launch
+
+```bash
+open "dist/Lecture Transcriber.app"
+```
+
+### What's bundled vs. external
+
+| Component | Bundled in the `.app`? |
+|---|---|
+| Python runtime + PySide6/Qt | Yes |
+| GUI source, styles, `app_paths` resource resolution | Yes |
+| `assets/images/` (background) | Yes |
+| `native/macos/capture` (compiled Swift helper) | Yes |
+| `ffmpeg` | **No** — must already be on the machine (`brew install ffmpeg`) |
+| `mlx_whisper` + model weights | **No** — `mlx_whisper` must already be installed; the Whisper model itself downloads on first transcription and is cached locally afterward (unchanged from the CLI) |
+
+Bundling `ffmpeg` and the MLX/PyTorch stack was deliberately avoided: it
+would make the `.app` enormous and fragile (MLX uses Apple Silicon-specific
+Metal shaders that don't freeze reliably), and this project doesn't assume
+Homebrew exists on the end user's Mac — it just can't avoid the dependency
+yet. If either tool is missing, the app surfaces the same actionable error
+messages the CLI already does (e.g. "ffmpeg not found on PATH...").
+
+Where files go when packaged (see `src/app_paths.py`):
+- Bundled resources (assets, capture binary) are read from inside the
+  `.app` (`Contents/Resources/...`), resolved via `sys.executable`, not the
+  working directory.
+- Recordings, transcripts, and temp audio are written to
+  `~/Library/Application Support/Lecture Transcriber/` instead of a
+  repo-relative folder, since an installed `.app` bundle is not writable.
+  Running from source (`python3 -m src.gui_main` or the CLI) is unaffected
+  and keeps using the repo-relative `recordings/`, `transcripts/`, `temp/`
+  folders exactly as before.
+
+### Known packaging limitations
+
+- **Not signed or notarized.** The build only produces an ad-hoc signature.
+  On another Mac, Gatekeeper will likely refuse to open it
+  (`spctl` reports "rejected") if the file was downloaded or transferred in
+  a way that sets the quarantine flag; the user must right-click → Open, or
+  allow it in System Settings → Privacy & Security. Real distribution needs
+  an Apple Developer ID and notarization, which requires credentials this
+  project does not have.
+- **Screen recording permission targets the capture helper, not the app.**
+  Because recording is a separate subprocess (`native/macos/capture`), the
+  first recording attempt should trigger a macOS "Screen & System Audio
+  Recording" permission prompt for that binary specifically, which the user
+  must approve in System Settings.
+- **`ffmpeg` and `mlx_whisper` must be installed separately**, and — this is
+  the main open risk for a truly clean Mac — a `.app` launched by
+  double-clicking in Finder gets a restricted default `PATH` (from
+  `/etc/paths` and `/etc/paths.d/`, not shell profiles). Homebrew's
+  installer adds itself there, so Homebrew-installed `ffmpeg` is generally
+  found; a `pip`-installed `mlx_whisper` console script usually is **not**
+  on that restricted `PATH` unless the user's Python install already put it
+  somewhere Finder-launched apps can see. This has not been fixed in this
+  pass — see "Next milestone" below.
+- Apple Silicon (`arm64`) only; Intel Macs are untested and not a goal.
+- No installer, no auto-update, no code signing — all explicitly out of
+  scope for this pass.
 
 ## Usage
 
@@ -595,7 +688,7 @@ The current implementation:
 - requires FFmpeg to be installed separately
 - requires Python and a virtual environment
 - ships a first desktop GUI (PySide6) covering the core record/transcribe
-  workflow only; it does not yet expose window capture, packaging, or
+  workflow only; it does not yet expose window capture, an installer, or
   advanced settings
 - does not include speaker diarization
 - does not generate summaries or explanations
@@ -604,7 +697,10 @@ The current implementation:
 - if Ctrl+C is pressed while the native capture helper is actively
   recording, the `.mov` file may not finish writing correctly; pressing
   ENTER to stop is the reliable way to end a recording
-- does not currently ship as a standalone macOS application
+- can be packaged into a `Lecture Transcriber.app` (see
+  "macOS App Packaging"), but it is unsigned/un-notarized, and `ffmpeg` /
+  `mlx_whisper` must still be installed separately on the machine running
+  it — see that section's "Known packaging limitations"
 - does not currently support Windows
 - does not currently include automated tests for the native Swift capture helper
 
@@ -635,13 +731,19 @@ The local recording and transcription pipeline should continue working without a
 
 ### V2
 
-- standalone macOS application
-- graphical interface
+- ✅ graphical interface (PySide6)
+- ✅ packaged macOS `.app` bundle (see "macOS App Packaging")
+- make the packaged app reliably find Homebrew `ffmpeg` and a pip-installed
+  `mlx_whisper` even when launched from Finder with a restricted `PATH`
+  (see "Known packaging limitations") — **next milestone**
+- code signing + notarization so Gatekeeper doesn't block the app on other
+  Macs
 - Windows capture backend
 - Windows transcription backend
 - standalone Windows application
-- packaging without requiring users to manually install Python or FFmpeg
-- simplified installation and first-run setup
+- simplified installation and first-run setup (e.g. a first-run check that
+  clearly tells the user what to install if `ffmpeg`/`mlx_whisper` are
+  missing, instead of failing mid-recording)
 
 ### V3
 

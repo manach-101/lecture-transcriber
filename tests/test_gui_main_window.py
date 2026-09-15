@@ -58,13 +58,33 @@ def test_on_failed_restores_controls_and_shows_message(window: MainWindow) -> No
     assert not window.stop_button.isEnabled()
 
 
-def test_on_finished_ok_restores_controls_and_shows_paths(window: MainWindow) -> None:
+def test_on_finished_ok_restores_controls_and_shows_friendly_filenames(
+    window: MainWindow,
+) -> None:
     window.start_button.setEnabled(False)
     window.stop_button.setEnabled(True)
 
     window._on_finished_ok("/tmp/rec.mov", "/tmp/rec.txt")
 
-    assert "/tmp/rec.mov" in window.path_value.text()
-    assert "/tmp/rec.txt" in window.path_value.text()
+    assert "rec.mov" in window.path_value.text()
+    assert "rec.txt" in window.path_value.text()
+    assert "/tmp/rec.mov" in window.path_value.toolTip()
+    assert "/tmp/rec.txt" in window.path_value.toolTip()
     assert window.start_button.isEnabled()
     assert not window.stop_button.isEnabled()
+
+
+def test_on_stage_changed_toggles_progress_bar_for_processing_stages(
+    window: MainWindow,
+) -> None:
+    window._on_stage_changed(Stage.EXTRACTING)
+    assert not window.progress_bar.isHidden()
+
+    window._on_stage_changed(Stage.TRANSCRIBING)
+    assert not window.progress_bar.isHidden()
+
+    window._on_stage_changed(Stage.DONE)
+    assert window.progress_bar.isHidden()
+
+    window._on_stage_changed(Stage.RECORDING)
+    assert window.progress_bar.isHidden()

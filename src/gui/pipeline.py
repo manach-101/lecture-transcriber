@@ -1,14 +1,14 @@
 from pathlib import Path
 from typing import Optional, Tuple
 
+from src.app_paths import user_data_root
 from src.capture.selector import get_capture_controls
 from src.processing.audio_extractor import extract_audio
 from src.processing.file_manager import build_output_paths
 from src.transcription.whisper_transcriber import transcribe_audio
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-TEMP_DIR = PROJECT_ROOT / "temp"
+TEMP_DIR = user_data_root() / "temp"
 
 
 class Stage:

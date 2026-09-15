@@ -1,10 +1,11 @@
 from datetime import datetime
 from pathlib import Path
 
+from src.app_paths import user_data_root
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RECORDINGS_DIR = PROJECT_ROOT / "recordings"
-TRANSCRIPTS_DIR = PROJECT_ROOT / "transcripts"
+
+RECORDINGS_DIR = user_data_root() / "recordings"
+TRANSCRIPTS_DIR = user_data_root() / "transcripts"
 
 
 def build_output_paths(class_name: str) -> tuple[Path, Path]:

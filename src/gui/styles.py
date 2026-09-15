@@ -43,7 +43,7 @@ STATUS_COLORS = {
 
 STYLESHEET = f"""
 QWidget {{
-    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-family: ".AppleSystemUIFont", "Helvetica Neue", Arial, sans-serif;
     color: {TEXT_PRIMARY};
 }}
 
@@ -182,5 +182,16 @@ QPushButton#secondaryButton:pressed {{
 
 QPushButton#secondaryButton:disabled {{
     color: {DISABLED_TEXT};
+}}
+
+QProgressBar {{
+    background-color: {INPUT_BG};
+    border: 1px solid {INPUT_BORDER};
+    border-radius: 3px;
+}}
+
+QProgressBar::chunk {{
+    background-color: {ACCENT_BLUE};
+    border-radius: 3px;
 }}
 """
